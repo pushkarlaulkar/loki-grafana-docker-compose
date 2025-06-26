@@ -1,0 +1,66 @@
+version: "3.3"
+
+networks:
+  loki:
+
+services:
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    user: "root:root"
+    volumes:
+      - /opt/services/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - /opt/services/loki-data/index:/loki/index
+      - /opt/services/loki-data/chunks:/loki/chunks
+      - /opt/services/loki-data/cache:/loki/cache
+    networks:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_FEATURE_TOGGLES_ENABLE=alertingSimplifiedRouting,alertingQueryAndExpressionsStepMode
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin-password-for-grafana
+      #If authenticating via self hosted GitLab
+      - GF_AUTH_GENERIC_OAUTH_NAME=GitLab
+      - GF_AUTH_GENERIC_OAUTH_ENABLED=true
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=
+      - GF_AUTH_GENERIC_OAUTH_SCOPES=openid email profile read_user
+      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=https://your-gitlab-domain/oauth/authorize
+      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=https://your-gitlab-domain/oauth/token
+      - GF_AUTH_GENERIC_OAUTH_API_URL=https://your-gitlab-domain/api/v4
+      - GF_AUTH_SIGNOUT_REDIRECT_URL=https://your-grafana-domain
+      - GF_SERVER_ROOT_URL=https://your-grafana-domain
+      - GF_USERS_ALLOW_SIGN_UP=false
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+        - name: Loki
+          type: loki
+          access: proxy 
+          orgId: 1
+          url: http://loki:3100
+          basicAuth: false
+          isDefault: true
+          version: 1
+          editable: false
+        EOF
+        /run.sh
+    ports:
+      - "3000:3000"
+    user: "root:root"
+    volumes:
+      - /opt/services/grafana-data:/var/lib/grafana
+      - /opt/services/grafana-provisioning:/etc/grafana/provisioning
+    networks:
+      - loki
